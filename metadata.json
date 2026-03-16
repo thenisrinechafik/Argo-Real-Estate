@@ -1,6 +1,6 @@
 {
   "name": "Argo Real Estate",
-  "description": "NYC's premier property management and residential brokerage firm specializing in co-ops, condos, and new developments.",
+  "description": "",
   "requestFramePermissions": [
     "geolocation"
   ]

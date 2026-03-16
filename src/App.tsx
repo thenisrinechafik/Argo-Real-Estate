@@ -65,7 +65,7 @@ import {
 
 const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [step, setStep] = useState<'start' | 'tenant-start' | 'investor-start' | 'investor-accredited' | 'investor-allocation' | 'investor-data-room' | 'investor-jv' | 'owner-start' | 'owner-email' | 'msg-email' | 'msg-content' | 'q-neighborhood-options' | 'q-neighborhood-other' | 'q-email' | 'q-budget' | 'q-income' | 'q-guarantor' | 'q-credit' | 'result' | 'data-collection' | 'success'>('start');
+  const [step, setStep] = useState<'start' | 'tenant-start' | 'investor-start' | 'investor-accredited' | 'investor-allocation' | 'investor-entity' | 'investor-data-room' | 'investor-jv' | 'owner-start' | 'owner-address' | 'owner-role' | 'owner-email' | 'msg-name' | 'msg-phone' | 'msg-email' | 'msg-content' | 'q-neighborhood-options' | 'q-neighborhood-other' | 'q-email' | 'q-budget' | 'q-income' | 'q-guarantor' | 'q-guarantor-income' | 'q-credit' | 'result' | 'data-collection' | 'success'>('start');
   const [userData, setUserData] = useState({
     role: '',
     neighborhood: '',
@@ -73,6 +73,7 @@ const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
     credit: 0,
     income: 0,
     hasGuarantor: false,
+    guarantorIncome: 0,
     moveIn: '',
     occupants: '',
     firstName: '',
@@ -138,10 +139,10 @@ const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
         { role: 'model', text: "Are you looking for Property Management or Asset Management services?" }
       ]);
     } else if (role === 'Message') {
-      setStep('msg-email');
+      setStep('msg-name');
       setMessages(prev => [...prev, 
         { role: 'user', text: "I'd like to send a message." },
-        { role: 'model', text: "Certainly. Please provide your email address so our team can reach back out to you." }
+        { role: 'model', text: "Certainly. Please provide your Full Name." }
       ]);
     }
   };
@@ -177,8 +178,30 @@ const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
   const handleInvestorAllocation = (allocation: string) => {
     setMessages(prev => [...prev, { role: 'user', text: allocation }]);
     setTimeout(() => {
-      setStep('investor-jv');
-      setMessages(prev => [...prev, { role: 'model', text: "Understood. Please provide your email address to connect with our acquisitions team." }]);
+      if (allocation === '< $1M') {
+        setStep('start');
+        setMessages(prev => [...prev, { role: 'model', text: "Thank you. For allocations under $1M, please contact our standard retail brokerage division." }]);
+      } else {
+        if (allocation === '$10M+' || allocation === '$5M - $10M' || allocation === '$1M - $5M') {
+          // Trigger Immediate Executive Alert
+          console.log("Immediate Executive Alert Triggered.");
+        }
+        setStep('investor-entity');
+        setMessages(prev => [...prev, { role: 'model', text: "Please select your entity type." }]);
+      }
+    }, 600);
+  };
+
+  const handleInvestorEntity = (entity: string) => {
+    setMessages(prev => [...prev, { role: 'user', text: entity }]);
+    setTimeout(() => {
+      if (entity === 'Individual') {
+        setStep('investor-jv');
+        setMessages(prev => [...prev, { role: 'model', text: "Please provide your email address to submit Proof of Funds." }]);
+      } else {
+        setStep('investor-jv');
+        setMessages(prev => [...prev, { role: 'model', text: "Bypassing to Partner Direct. Please provide your email address." }]);
+      }
     }, 600);
   };
 
@@ -219,6 +242,10 @@ const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
 
     setTimeout(() => {
       if (step === 'investor-data-room' || step === 'investor-jv' || step === 'owner-email') {
+        if (!userText.includes('@') || !userText.includes('.')) {
+          setMessages(prev => [...prev, { role: 'model', text: "Please provide a valid email address." }]);
+          return;
+        }
         setUserData(prev => ({ ...prev, email: userText }));
         setMessages(prev => [...prev, { role: 'model', text: "Thank you. Your information has been securely logged. Our team will contact you shortly." }]);
         setStep('start');
@@ -229,23 +256,88 @@ const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
         if (step.includes('investor')) {
           console.log(`Payload: { type: 'Institutional Investor', email: '${userText}', status: 'Priority 1', accredited: true }`);
           console.log("Action: Pushing to Salesforce Financial Services Cloud...");
+          console.log("Action: Immediate Executive Alert Triggered.");
         } else {
           console.log(`Payload: { type: 'Property Owner', email: '${userText}' }`);
           console.log("Action: Pushing to Yardi Voyager...");
         }
+      } else if (step === 'msg-name') {
+        const nameParts = userText.trim().split(/\s+/);
+        if (nameParts.length < 2) {
+          setMessages(prev => [...prev, { role: 'model', text: "Please provide your full name (first and last name)." }]);
+          return;
+        }
+        setUserData(prev => ({ ...prev, firstName: nameParts[0], lastName: nameParts.slice(1).join(' ') }));
+        setStep('msg-phone');
+        setMessages(prev => [...prev, { role: 'model', text: "Thank you. Please provide your Phone Number." }]);
+      } else if (step === 'msg-phone') {
+        const phoneDigits = userText.replace(/\D/g, '');
+        if (phoneDigits.length < 10) {
+          setMessages(prev => [...prev, { role: 'model', text: "Please provide a valid phone number (at least 10 digits)." }]);
+          return;
+        }
+        setUserData(prev => ({ ...prev, phone: userText }));
+        setStep('msg-email');
+        setMessages(prev => [...prev, { role: 'model', text: "Thank you. Please provide your Email Address." }]);
       } else if (step === 'msg-email') {
+        if (!userText.includes('@') || !userText.includes('.')) {
+          setMessages(prev => [...prev, { role: 'model', text: "Please provide a valid email address." }]);
+          return;
+        }
+        const emailDomain = userText.split('@')[1]?.toLowerCase() || '';
+        const spamDomains = ['spam.com', 'junk.com', 'test.com'];
+        if (spamDomains.includes(emailDomain)) {
+          console.log("SILENT DISCARD: Spam domain detected.");
+          setUserData(prev => ({ ...prev, email: userText }));
+          setStep('start');
+          setMessages(prev => [...prev, { role: 'model', text: "Thank you. Your message has been logged. We will contact you within one business day." }]);
+          return;
+        }
         setUserData(prev => ({ ...prev, email: userText }));
         setStep('msg-content');
         setMessages(prev => [...prev, { role: 'model', text: "Thank you. Please explain your situation and what you are looking for." }]);
       } else if (step === 'msg-content') {
+        if (userText.length < 20) {
+          setMessages(prev => [...prev, { role: 'model', text: "Please provide more detail regarding your inquiry to reach a representative." }]);
+          return;
+        }
         setMessages(prev => [...prev, { role: 'model', text: "Thank you. Your message has been logged. We will contact you within one business day." }]);
         setStep('start');
+      } else if (step === 'owner-address') {
+        const address = userText.toLowerCase();
+        // Mock internal database check
+        if (address.includes('123') || address.includes('argo') || address.includes('broadway')) {
+          setStep('owner-role');
+          setMessages(prev => [...prev, { role: 'model', text: "Address verified. What is your role? (e.g., Owner, Principal, Manager)" }]);
+        } else {
+          setStep('owner-email');
+          setMessages(prev => [...prev, { role: 'model', text: "Address not found in our internal database. Routing to Onboarding/Sales. Please provide your email address to continue." }]);
+        }
+      } else if (step === 'owner-role') {
+        const role = userText.toLowerCase();
+        if (!role.includes('owner') && !role.includes('principal') && !role.includes('manager') && !role.includes('agent') && !role.includes('broker')) {
+           setMessages(prev => [...prev, { role: 'model', text: "Please specify a valid role (e.g., Owner, Principal, Manager)." }]);
+           return;
+        }
+        if (role.includes('owner') || role.includes('principal')) {
+          localStorage.setItem('isOwnerPrincipal', 'true');
+          setIsOpen(false);
+          setPage('dashboard');
+          setStep('start');
+          setMessages([{ role: 'model', text: "Welcome to Argo. How can we assist your goals today?" }]);
+        } else {
+          localStorage.setItem('isOwnerPrincipal', 'false');
+          setIsOpen(false);
+          setPage('dashboard');
+          setStep('start');
+          setMessages([{ role: 'model', text: "Welcome to Argo. How can we assist your goals today?" }]);
+        }
       } else if (step === 'q-neighborhood-other') {
         const textLower = userText.toLowerCase();
         if (textLower.includes('jersey') || textLower.includes('nj') || textLower.includes('long island') || textLower.includes('upstate') || textLower.includes('westchester') || textLower.includes('ct') || textLower.includes('connecticut')) {
           setUserData(prev => ({ ...prev, neighborhood: userText }));
           setQualificationResult('geo-reject');
-          setMessages(prev => [...prev, { role: 'model', text: `Argo specializes exclusively in high-end stewardship within the New York City boroughs. We focus our expertise where we can provide the highest level of service. While we don't currently have listings in ${userText}, would you like us to notify you if our portfolio expands?` }]);
+          setMessages(prev => [...prev, { role: 'model', text: `Argo specializes exclusively in high-end stewardship within the New York City boroughs. We focus our expertise where we can provide the highest level of service. We do not currently have listings in ${userText}.` }]);
           setStep('result');
         } else {
           setUserData(prev => ({ ...prev, neighborhood: userText }));
@@ -253,16 +345,38 @@ const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
           setMessages(prev => [...prev, { role: 'model', text: "To send you your qualification results, please provide your email address." }]);
         }
       } else if (step === 'q-email') {
+        if (!userText.includes('@') || !userText.includes('.')) {
+          setMessages(prev => [...prev, { role: 'model', text: "Verification Required. Please provide a valid email address." }]);
+          return;
+        }
+        const emailDomain = userText.split('@')[1]?.toLowerCase() || '';
+        if (['gmail.com', 'yahoo.com', 'hotmail.com', 'aol.com'].includes(emailDomain)) {
+          console.log("FLAG: Public email domain detected.");
+        }
         setUserData(prev => ({ ...prev, email: userText }));
         setStep('q-budget');
         setMessages(prev => [...prev, { role: 'model', text: "Understood. And what is your monthly budget for this residence?" }]);
       } else if (step === 'q-budget') {
-        const budget = parseInt(userText.replace(/\D/g, '')) || 0;
+        const budget = parseInt(userText.replace(/,/g, '').replace(/\D/g, '')) || 0;
+        if (budget === 0) {
+          setMessages(prev => [...prev, { role: 'model', text: "Please provide a valid numerical amount for your budget." }]);
+          return;
+        }
         setUserData(prev => ({ ...prev, budget }));
-        setStep('q-income');
-        setMessages(prev => [...prev, { role: 'model', text: "Perfect. NYC standards typically require an annual gross income of 40x the monthly rent. What is your approximate annual household income?" }]);
+        if (budget < 2000) {
+          setQualificationResult('unqualified');
+          setMessages(prev => [...prev, { role: 'model', text: "Budget not compatible with portfolio." }]);
+          setStep('result');
+        } else {
+          setStep('q-income');
+          setMessages(prev => [...prev, { role: 'model', text: "Perfect. NYC standards typically require an annual gross income of 40x the monthly rent. What is your approximate annual household income?" }]);
+        }
       } else if (step === 'q-income') {
-        const income = parseInt(userText.replace(/\D/g, '')) || 0;
+        const income = parseInt(userText.replace(/,/g, '').replace(/\D/g, '')) || 0;
+        if (income === 0) {
+          setMessages(prev => [...prev, { role: 'model', text: "Please provide a valid numerical amount for your annual income." }]);
+          return;
+        }
         setUserData(prev => {
           const updatedData = { ...prev, income };
           if (income < updatedData.budget * 40) {
@@ -275,41 +389,66 @@ const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
           return updatedData;
         });
       } else if (step === 'q-guarantor') {
-        const hasGuarantor = userText.toLowerCase().includes('yes') || userText.toLowerCase().includes('yup') || userText.toLowerCase().includes('sure');
+        const textLower = userText.toLowerCase();
+        const hasGuarantor = textLower.includes('yes') || textLower.includes('yup') || textLower.includes('sure') || textLower === 'y';
+        const hasNoGuarantor = textLower.includes('no') || textLower.includes('nope') || textLower === 'n';
+        
+        if (!hasGuarantor && !hasNoGuarantor) {
+          setMessages(prev => [...prev, { role: 'model', text: "Please answer Yes or No." }]);
+          return;
+        }
+        
         setUserData(prev => ({ ...prev, hasGuarantor }));
-        setStep('q-credit');
-        setMessages(prev => [...prev, { role: 'model', text: "Thank you. To ensure a smooth application, what is your approximate credit score?" }]);
+        if (!hasGuarantor) {
+          setQualificationResult('unqualified');
+          setMessages(prev => [...prev, { role: 'model', text: "Ineligible. Requires 80x Guarantor." }]);
+          setStep('result');
+        } else {
+          setStep('q-guarantor-income');
+          setMessages(prev => [...prev, { role: 'model', text: "What is your guarantor's approximate annual income?" }]);
+        }
+      } else if (step === 'q-guarantor-income') {
+        const guarantorIncome = parseInt(userText.replace(/,/g, '').replace(/\D/g, '')) || 0;
+        if (guarantorIncome === 0) {
+          setMessages(prev => [...prev, { role: 'model', text: "Please provide a valid numerical amount for your guarantor's annual income." }]);
+          return;
+        }
+        setUserData(prev => {
+          const updatedData = { ...prev, guarantorIncome };
+          if (guarantorIncome < updatedData.budget * 80) {
+            setQualificationResult('unqualified');
+            setMessages(m => [...m, { role: 'model', text: "Guarantor Income Insufficient. Requires 80x Guarantor." }]);
+            setStep('result');
+          } else {
+            setStep('q-credit');
+            setMessages(m => [...m, { role: 'model', text: "Thank you. To ensure a smooth application, what is your approximate credit score?" }]);
+          }
+          return updatedData;
+        });
       } else if (step === 'q-credit') {
         const credit = parseInt(userText.replace(/\D/g, '')) || 0;
+        if (credit === 0 || credit < 300 || credit > 850) {
+          setMessages(prev => [...prev, { role: 'model', text: "Please provide a valid credit score (e.g., between 300 and 850)." }]);
+          return;
+        }
         setUserData(prev => {
           const updatedData = { ...prev, credit };
           
-          const incomeRequirement = updatedData.budget * 40;
-          const meetsIncome = updatedData.income >= incomeRequirement || updatedData.hasGuarantor;
-          
           let result: 'qualified' | 'conditional' | 'unqualified' = 'qualified';
+          let resultText = "";
           
-          if (updatedData.credit < 670 || !meetsIncome) {
+          if (updatedData.credit < 650) {
             result = 'unqualified';
+            resultText = "Based on the current requirements for our portfolio, we require a credit score of 650 or higher. We recommend third-party guarantor services like TheGuarantors or Insurent, which Argo proudly accepts. Please return when you have secured a guarantor or improved your credit score.";
           } else if (updatedData.credit < 700) {
             result = 'conditional';
+            resultText = "You are likely qualified, though additional documentation or a slightly higher security deposit may be requested by the board. To provide you with VIP service, please provide your contact details.";
+          } else {
+            result = 'qualified';
+            resultText = "Congratulations! You meet the preliminary requirements for residency. To provide you with VIP service, please provide your contact details. A leasing specialist will reach out shortly to schedule your private showing.";
           }
           
           setQualificationResult(result);
-          
-          let resultText = "";
-          if (result === 'qualified') {
-            resultText = `Congratulations! You meet the preliminary requirements for residency. To provide you with VIP service, please provide your contact details. A leasing specialist will reach out shortly to schedule your private showing.`;
-          } else if (result === 'conditional') {
-            resultText = `You are likely qualified, though additional documentation or a slightly higher security deposit may be requested by the board. To provide you with VIP service, please provide your contact details.`;
-          } else {
-            if (updatedData.credit < 670) {
-              resultText = `Based on the current requirements for our portfolio, we require a credit score of 670 or higher. We recommend third-party guarantor services like TheGuarantors or Insurent, which Argo proudly accepts. Would you like us to keep your info on file for future opportunities?`;
-            } else {
-              resultText = `Based on NYC requirements, applicants must meet the 40x income rule or have an 80x guarantor. We recommend third-party guarantor services like TheGuarantors or Insurent. Would you like us to keep your info on file for future opportunities?`;
-            }
-          }
-          
           setMessages(m => [...m, { role: 'model', text: resultText }]);
           setStep('result');
           return updatedData;
@@ -320,13 +459,32 @@ const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
 
   const handleDataSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!userData.firstName.trim() || !userData.lastName.trim()) {
+      alert("Please provide your full name (first and last name).");
+      return;
+    }
+
+    const phoneDigits = userData.phone.replace(/\D/g, '');
+    if (phoneDigits.length < 10) {
+      alert("Please provide a valid phone number (at least 10 digits).");
+      return;
+    }
+
+    if (!userData.email.includes('@') || !userData.email.includes('.')) {
+      alert("Please provide a valid email address.");
+      return;
+    }
+
+    // "You only accept what is qualified."
+    if (qualificationResult === 'unqualified' || qualificationResult === 'geo-reject') {
+      alert("We are only accepting applications from qualified candidates at this time.");
+      return;
+    }
+
     setStep('success');
     
-    if (qualificationResult === 'qualified' || qualificationResult === 'conditional') {
-      setMessages(prev => [...prev, { role: 'model', text: "Excellent. Your information has been received. A leasing specialist will reach out to you shortly." }]);
-    } else {
-      setMessages(prev => [...prev, { role: 'model', text: "Thank you. Your information has been securely saved. We will notify you as soon as a suitable property becomes available." }]);
-    }
+    setMessages(prev => [...prev, { role: 'model', text: "Excellent. Your information has been received. A leasing specialist will reach out to you shortly." }]);
     
     // Simulate backend magic
     const incomeMultiplier = userData.budget > 0 ? Math.round(userData.income / userData.budget) : 0;
@@ -334,14 +492,9 @@ const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
     console.log("--- CRM INTEGRATION SYNC ---");
     console.log(`Endpoint: https://api.argorealestate.com/v1/leads/tenant`);
     
-    if (qualificationResult === 'qualified' || qualificationResult === 'conditional') {
-      console.log(`Payload: { type: 'Qualified Tenant', name: '${userData.firstName} ${userData.lastName}', credit: ${userData.credit}, incomeMultiplier: ${incomeMultiplier}x, target: '${userData.neighborhood}' }`);
-      console.log("Action: Pushing to AppFolio / Yardi Voyager...");
-      console.log("Action: Triggering Leasing Agent Notification...");
-    } else {
-      console.log(`Payload: { type: 'Waitlist Tenant', name: '${userData.firstName} ${userData.lastName}', target: '${userData.neighborhood}' }`);
-      console.log("Action: Pushing to HubSpot Nurture Sequence...");
-    }
+    console.log(`Payload: { type: 'Qualified Tenant', name: '${userData.firstName} ${userData.lastName}', credit: ${userData.credit}, incomeMultiplier: ${incomeMultiplier}x, target: '${userData.neighborhood}' }`);
+    console.log("Action: Pushing to AppFolio / Yardi Voyager...");
+    console.log("Action: Triggering Leasing Agent Notification...");
   };
 
   return (
@@ -503,6 +656,9 @@ const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
 
               {step === 'investor-allocation' && (
                 <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                  <button onClick={() => handleInvestorAllocation('< $1M')} className="w-full py-2 px-4 bg-white border border-argo-gold/20 text-argo-blue text-xs font-bold uppercase tracking-widest hover:bg-argo-gold hover:text-white transition-all">
+                    &lt; $1M
+                  </button>
                   <button onClick={() => handleInvestorAllocation('$1M - $5M')} className="w-full py-2 px-4 bg-white border border-argo-gold/20 text-argo-blue text-xs font-bold uppercase tracking-widest hover:bg-argo-gold hover:text-white transition-all">
                     $1M - $5M
                   </button>
@@ -511,6 +667,17 @@ const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
                   </button>
                   <button onClick={() => handleInvestorAllocation('$10M+')} className="w-full py-2 px-4 bg-white border border-argo-gold/20 text-argo-blue text-xs font-bold uppercase tracking-widest hover:bg-argo-gold hover:text-white transition-all">
                     $10M+
+                  </button>
+                </div>
+              )}
+
+              {step === 'investor-entity' && (
+                <div className="flex flex-col gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500">
+                  <button onClick={() => handleInvestorEntity('Individual')} className="w-full py-2 px-4 bg-white border border-argo-gold/20 text-argo-blue text-xs font-bold uppercase tracking-widest hover:bg-argo-gold hover:text-white transition-all">
+                    Individual
+                  </button>
+                  <button onClick={() => handleInvestorEntity('Fund/REIT')} className="w-full py-2 px-4 bg-white border border-argo-gold/20 text-argo-blue text-xs font-bold uppercase tracking-widest hover:bg-argo-gold hover:text-white transition-all">
+                    Fund / REIT
                   </button>
                 </div>
               )}
@@ -540,13 +707,13 @@ const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
                 </div>
               )}
 
-              {step === 'result' && (
+              {step === 'result' && (qualificationResult === 'qualified' || qualificationResult === 'conditional') && (
                 <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
                   <button 
                     onClick={() => setStep('data-collection')}
                     className="w-full py-4 bg-argo-gold text-white text-[10px] font-bold uppercase tracking-widest hover:bg-argo-blue transition-all"
                   >
-                    {qualificationResult === 'qualified' || qualificationResult === 'conditional' ? 'Lock in my Result' : 'Yes, Notify Me'}
+                    Lock in my Result
                   </button>
                 </div>
               )}
@@ -559,9 +726,7 @@ const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
                 >
                   <h5 className="text-argo-blue font-bold uppercase tracking-widest text-[10px] mb-2">Secure Registration</h5>
                   <p className="text-[10px] text-argo-slate mb-6">
-                    {qualificationResult === 'qualified' || qualificationResult === 'conditional' 
-                      ? 'Enter your details below to receive your Pre-Qualification Certificate and a direct link to book a VIP tour.' 
-                      : 'Enter your details below to join our priority waitlist for flexible-requirement projects.'}
+                    Enter your details below to receive your Pre-Qualification Certificate and a direct link to book a VIP tour.
                   </p>
                   <form onSubmit={handleDataSubmit} className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
@@ -644,7 +809,7 @@ const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
               )}
             </div>
 
-            {['msg-email', 'msg-content', 'q-neighborhood-other', 'q-email', 'q-budget', 'q-income', 'q-guarantor', 'q-credit', 'investor-data-room', 'investor-jv', 'owner-email'].includes(step) && (
+            {['msg-name', 'msg-phone', 'msg-email', 'msg-content', 'owner-address', 'owner-role', 'q-neighborhood-other', 'q-email', 'q-budget', 'q-income', 'q-guarantor', 'q-guarantor-income', 'q-credit', 'investor-data-room', 'investor-jv', 'owner-email'].includes(step) && (
               <div className="p-6 bg-white border-t border-black/[0.05]">
                 <div className="relative">
                   <input 
@@ -677,6 +842,8 @@ const ArgoConcierge = ({ setPage }: { setPage: (p: Page) => void }) => {
 const DashboardPage = () => {
   const [selectedPortfolio, setSelectedPortfolio] = useState('All Properties');
   
+  const isOwnerPrincipal = localStorage.getItem('isOwnerPrincipal') !== 'false';
+
   const occupancyData = [
     { month: 'Jan', rate: 94 },
     { month: 'Feb', rate: 95 },
@@ -763,6 +930,27 @@ const DashboardPage = () => {
               <Clock className="w-3 h-3" /> 8 Avg. Hours to Close
             </div>
           </div>
+          
+          {isOwnerPrincipal && (
+            <>
+              <div className="bg-white p-10 border border-black/[0.03] shadow-sm relative overflow-hidden group">
+                <div className="absolute top-0 left-0 w-1 h-full bg-argo-gold transform -translate-x-full group-hover:translate-x-0 transition-transform"></div>
+                <div className="label-micro text-argo-slate/40 mb-4">Yield</div>
+                <div className="text-5xl font-serif mb-2">5.8%</div>
+                <div className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest flex items-center gap-1">
+                  <ArrowUpRight className="w-3 h-3" /> +0.2% vs Last Year
+                </div>
+              </div>
+              <div className="bg-white p-10 border border-black/[0.03] shadow-sm relative overflow-hidden group">
+                <div className="absolute top-0 left-0 w-1 h-full bg-argo-blue transform -translate-x-full group-hover:translate-x-0 transition-transform"></div>
+                <div className="label-micro text-argo-slate/40 mb-4">Principal Remaining</div>
+                <div className="text-5xl font-serif mb-2">$42.5M</div>
+                <div className="text-[10px] text-argo-gold font-bold uppercase tracking-widest flex items-center gap-1">
+                  <Clock className="w-3 h-3" /> Amortizing on Schedule
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Charts Grid */}
